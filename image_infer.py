@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import json
 import gc
+import time
 from pathlib import Path
 from typing import Dict, List
 import os
@@ -148,6 +149,9 @@ def process_file(
     input_path: Path,
     output_path: Path,
 ):
+    total_time = 0
+    count = 0
+    
     with input_path.open("r", encoding="utf-8") as fin, output_path.open(
         "w", encoding="utf-8"
     ) as fout:
@@ -155,12 +159,19 @@ def process_file(
             if not line.strip():
                 continue
             record: Dict = json.loads(line)
+            
+            start_time = time.time()
             try:
                 answer = infer_single(model, processor, record)
                 record["llm_answer"] = answer
                 fout.write(json.dumps(record, ensure_ascii=False) + "\n")
                 fout.flush()
-                print(f"[{idx}] → {answer}")
+                
+                elapsed = time.time() - start_time
+                total_time += elapsed
+                count += 1
+                
+                print(f"[{idx}] → {answer} (耗时: {elapsed:.2f}秒)")
             except Exception as e:
                 print(f"Error processing record {idx}: {str(e)}")
                 record["llm_answer"] = "ERROR"
@@ -169,6 +180,12 @@ def process_file(
                 # 每次循环后强制执行垃圾回收
                 gc.collect()
                 torch.cuda.empty_cache()
+    
+    # 计算并打印平均处理时间
+    if count > 0:
+        avg_time = total_time / count
+        print(f"处理完成！共处理 {count} 条记录，总耗时 {total_time:.2f} 秒，平均每条记录耗时 {avg_time:.2f} 秒")
+    
     print("Done. Results saved to", output_path)
 
 

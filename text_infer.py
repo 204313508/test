@@ -18,6 +18,7 @@ import argparse
 import json
 from pathlib import Path
 from typing import Dict
+import time
 
 import torch
 from transformers import Qwen2_5OmniForConditionalGeneration, Qwen2_5OmniProcessor
@@ -151,17 +152,33 @@ def process_file(model, processor, input_path: Path, output_path: Path):
     - input_path (Path): 输入文件路径。
     - output_path (Path): 输出文件路径。
     """
+    total_time = 0
+    count = 0
+    
     with input_path.open("r", encoding="utf-8") as fin, output_path.open("a", encoding="utf-8") as fout:
         for line in fin:
             if not line.strip():
                 continue
             record: Dict = json.loads(line)
+            
+            start_time = time.time()
             llm_answer = infer(model, processor, record)
+            elapsed = time.time() - start_time
+            
+            total_time += elapsed
+            count += 1
+            
             record["llm_answer"] = llm_answer
             fout.write(json.dumps(record, ensure_ascii=False) + "\n")
             fout.flush()
-            print("Processed", record.get("question")[:30], "->", llm_answer)
+            print(f"Processed {record.get('question')[:30]} -> {llm_answer} (Time: {elapsed:.3f}s)")
             torch.cuda.empty_cache()
+    
+    if count > 0:
+        avg_time = total_time / count
+        print(f"\n✅ 平均每条推理时间: {avg_time:.3f} 秒 (共 {count} 条)")
+    else:
+        print("⚠️ 未处理任何样本。")
 
 
 def main():

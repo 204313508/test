@@ -18,6 +18,7 @@ import argparse
 import json
 from pathlib import Path
 from typing import Dict
+import time
 
 import torch
 from modelscope import AutoModelForCausalLM, AutoTokenizer
@@ -118,6 +119,9 @@ def process_file(model, tokenizer, input_path: Path, output_path: Path):
     - input_path (Path): 输入文件路径。
     - output_path (Path): 输出文件路径。
     """
+    total_time = 0
+    count = 0
+    
     # 断点续传功能：如果输出文件已存在，则统计其中已处理的非空行数，以便跳过输入文件中对应的行。
     processed_count = 0
     if output_path.exists():
@@ -132,12 +136,25 @@ def process_file(model, tokenizer, input_path: Path, output_path: Path):
             if not line.strip():
                 continue
             record: Dict = json.loads(line)
+            
+            start_time = time.time()
             llm_answer = infer(model, tokenizer, record)
+            elapsed = time.time() - start_time
+            
+            total_time += elapsed
+            count += 1
+            
             record["llm_answer"] = llm_answer.split("答案：")[-1].split("答案:")[-1].split("Answer:")[-1].split("Answer：")[-1]
             fout.write(json.dumps(record, ensure_ascii=False) + "\n")
             fout.flush()
-            print("Processed", record.get("question")[:30], "->", llm_answer)
+            print(f"Processed {record.get('question')[:30]} -> {llm_answer} (Time: {elapsed:.3f}s)")
             torch.cuda.empty_cache()
+    
+    if count > 0:
+        avg_time = total_time / count
+        print(f"\n✅ 平均每条推理时间: {avg_time:.3f} 秒 (共 {count} 条)")
+    else:
+        print("⚠️ 未处理任何样本。")
 
 
 def main():

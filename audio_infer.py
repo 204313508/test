@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Dict, List
 import gc
 import os
+import time
 os.environ["CUDA_VISIBLE_DEVICES"] = "0"
 import torch
 import torchaudio  # type: ignore
@@ -184,6 +185,9 @@ def process_file(
     output_path: Path,
 ):
     """Process *input_path* jsonl file sequentially and save answers to *output_path* with checkpoint resume (断点续传)."""
+    total_time = 0
+    count = 0
+    
     # Check how many lines already processed (non-empty lines)
     processed_lines = 0
     if output_path.exists():
@@ -202,14 +206,30 @@ def process_file(
                 if idx <= processed_lines:
                     continue  # Skip already processed lines
                 record: Dict = json.loads(line)
+                
+                start_time = time.time()
                 # run inference for this single record
                 answer = infer_single(model, processor, record)
+                elapsed = time.time() - start_time
+                
+                total_time += elapsed
+                count += 1
+                
                 record["llm_answer"] = answer
                 fout.write(json.dumps(record, ensure_ascii=False) + "\n")
                 # flush periodically and log progress
                 if idx % 10 == 0:
                     fout.flush()
-                    print(f"[{idx}] records processed (resumed)")
+                    print(f"[{idx}] records processed (resumed) (Time: {elapsed:.3f}s)")
+                else:
+                    print(f"[{idx}] Processed (Time: {elapsed:.3f}s)")
+    
+    if count > 0:
+        avg_time = total_time / count
+        print(f"\n✅ 平均每条推理时间: {avg_time:.3f} 秒 (共 {count} 条)")
+    else:
+        print("⚠️ 未处理任何样本。")
+    
     print("Done. Results saved to", output_path)
 
 
